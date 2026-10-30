@@ -39,7 +39,7 @@
   <path id="tesla_node_5" transform="matrix(1 0 0 1 0 0)" d="M302,194 L434,194 L420,184 L316,184 Z M316,182 L420,182 L407,174 L329,174 Z M332,174 L339,111 L397,111 L404,174 Z" fill="#646464" stroke="#7D7D7D" stroke-width="1.2"/>
   <!-- Bound crown pieces follow the coils as Filter changes their spacing. -->
   <path id="tesla_node_6" d="M109,111 L109,98 L115,98 L115,111 Z" fill="#646464" stroke="#646464" stroke-width="1"/>
-  <circle id="tesla_node_7" cx="112" cy="90" r="13" fill="#323232" stroke="#323232" stroke-width="1"/>
+  <circle id="tesla_node_7" cx="112" cy="90" r="13" fill="#000000" stroke="#323232" stroke-width="1"/>
   <path id="tesla_node_8" d="M365,111 L365,98 L371,98 L371,111 Z" fill="#CDCDCD" stroke="#CDCDCD" stroke-width="1"/>
   <circle id="tesla_node_9" cx="368" cy="90" r="13" fill="#646464" stroke="#646464" stroke-width="1"/>
   <path id="tesla_node_10" d="M79,121 L145,121 L144,126 L80,126 Z" fill="#646464" stroke="#646464" stroke-width="1"/>

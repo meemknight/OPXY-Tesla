@@ -106,7 +106,8 @@ inline void display(DisplayState& state, const opxy::draw::Input& input, Frame& 
     const opxy::i32 spread = input.slots[5];
     // Spread widens the two-edge electrical ribbon itself: at high values the
     // upper and lower trace lines visibly separate, like an ensemble current.
-    const opxy::i32 primary_thickness = 4 + (spread >> 28);
+    // 4 px at zero, exactly 24 px at maximum Spread.
+    const opxy::i32 primary_thickness = 4 + (spread >> 26) * 20 / 31;
     const opxy::i32 primary_join = waveform(frame.paths[0], phase, input.slots[0],
                                              primary_thickness, 120, 0, crush, 0, false);
     waveform(frame.paths[1], phase, input.slots[1], primary_thickness, 120, 0,
