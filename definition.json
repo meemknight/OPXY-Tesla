@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "id": "tesla",
+  "name": "Tesla",
+  "parameters": [
+    {"id":"modulation","label":"Ampere","default":0.4,"mapping":{"kind":"linear","minimum":0,"maximum":1},"display":"percent"},
+    {"id":"ground_noise","label":"Ground","default":0.1,"mapping":{"kind":"linear","minimum":0,"maximum":1},"display":"percent"},
+    {"id":"phase_filter","label":"Filter","default":0.5,"mapping":{"kind":"linear","minimum":0,"maximum":1},"display":"percent"},
+    {"id":"detune","label":"Detune","default":0,"mapping":{"kind":"linear","minimum":0,"maximum":1},"display":"percent"},
+    {"id":"crush","label":"Crush","control":0,"default":0,"mapping":{"kind":"linear","minimum":0,"maximum":1},"display":"percent"},
+    {"id":"spread","label":"Spread","control":1,"default":0,"mapping":{"kind":"linear","minimum":0,"maximum":1},"display":"percent"},
+    {"id":"lfo_rate","label":"LFO Rate","control":2,"default":0.1,"mapping":{"kind":"linear","minimum":0,"maximum":1},"display":"percent"},
+    {"id":"lfo_amount","label":"LFO Amt","control":3,"default":0,"mapping":{"kind":"linear","minimum":0,"maximum":1},"display":"percent"}
+  ],
+  "presets": {
+    "Clean":{"modulation":0,"ground_noise":0,"phase_filter":0.5,"detune":0,"crush":0,"spread":0,"lfo_rate":0.1,"lfo_amount":0},
+    "Arc":{"modulation":0.68,"ground_noise":0.3,"phase_filter":0.34,"detune":0.32,"crush":0,"spread":0.18,"lfo_rate":0.12,"lfo_amount":0.16},
+    "Shortwave":{"modulation":0.92,"ground_noise":0.82,"phase_filter":0.85,"detune":0.7,"crush":0.28,"spread":0.24,"lfo_rate":0.2,"lfo_amount":0.36},
+    "Rain":{"modulation":0.72,"ground_noise":0.64,"phase_filter":0.9,"detune":0.78,"crush":0.64,"spread":0.42,"lfo_rate":0.08,"lfo_amount":0.48},
+    "Saw Stack":{"modulation":0.5,"ground_noise":0.5,"phase_filter":0.5,"detune":0.06,"crush":0,"spread":0.34,"lfo_rate":0.1,"lfo_amount":0},
+    "Square Arc":{"modulation":1,"ground_noise":1,"phase_filter":0.5,"detune":0.04,"crush":0,"spread":0.2,"lfo_rate":0.1,"lfo_amount":0}
+  },
+  "resources": {
+    "voiceBytes":2084,"voiceAlignment":4,"voiceCapacity":8,"sharedBytes":0,
+    "outputPeakQ31":2147483647,
+    "display":{"stateBytes":24,"stateAlignment":4,"paths":4,"points":64,"nodes":30,"texts":16,"palette":16}
+  },
+  "press":"page"
+}
