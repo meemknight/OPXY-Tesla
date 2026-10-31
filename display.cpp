@@ -96,7 +96,8 @@ inline void display(DisplayState& state, const opxy::draw::Input& input, Frame& 
     const opxy::u8 pages[2][4] = {{0, 1, 2, 3}, {4, 5, 6, 7}};
     page_header(state.header, input, frame, titles, values, 22, pages);
 
-    if (!input.reduced_motion)
+    const bool held = input.held_notes > 0 && input.held_notes <= 128;
+    if (!input.reduced_motion && held)
         state.phase = (state.phase + static_cast<opxy::u32>(clamp(input.elapsed, 0, 102)) * 4u) % 3600u;
 
     const opxy::i32 phase = static_cast<opxy::i32>(state.phase);

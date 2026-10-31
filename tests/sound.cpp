@@ -52,6 +52,8 @@ int main() {
                                     0x051eb852, 0, 0x60000000, 0, 0};
     const opxy::i32 lfo_motion[8] = {0x40000000, 0x40000000, 0x7fffffff,
                                       0x051eb852, 0, 0, 0x20000000, 0x7fffffff};
+    const opxy::i32 worst_case[8] = {0x7fffffff, 0x7fffffff, 0x7fffffff,
+                                      0x7fffffff, 0, 0x7fffffff, 0x7fffffff, 0x7fffffff};
     opxy::u32 pitch[opxy::block_frames];
     for (unsigned i = 0; i < opxy::block_frames; ++i) pitch[i] = 42852281u;  // 440 Hz at 44.1 kHz
     opxy::i32 output[opxy::block_frames];
@@ -75,6 +77,7 @@ int main() {
     opxy::i32 dry_long_output[opxy::block_frames];
     opxy::i32 spread_output[opxy::block_frames];
     opxy::i32 lfo_output[opxy::block_frames];
+    opxy::i32 worst_case_output[opxy::block_frames];
     render_once(clean, pitch, clean_output);
     render_once(saw_stack, pitch, saw_output);
     render_once(square_arc, pitch, square_output);
@@ -84,6 +87,7 @@ int main() {
     render_blocks(saw_stack, pitch, dry_long_output, 16);
     render_blocks(ensemble, pitch, spread_output, 16);
     render_once(lfo_motion, pitch, lfo_output);
+    render_blocks(worst_case, pitch, worst_case_output, 64);
     const bool saw_changes_shape = differs(clean_output, saw_output);
     const bool square_changes_shape = differs(saw_output, square_output);
     const bool filter_changes_sound = differs(low_pass_output, saw_output);
@@ -93,7 +97,7 @@ int main() {
     const bool lfo_changes_sound = differs(saw_output, lfo_output);
     const bool hard_sounds_bounded = inside_peak(saw_output) && inside_peak(square_output)
         && inside_peak(low_pass_output) && inside_peak(noisy_output) && inside_peak(crushed_output)
-        && inside_peak(spread_output) && inside_peak(lfo_output);
+        && inside_peak(spread_output) && inside_peak(lfo_output) && inside_peak(worst_case_output);
     const bool tone_zones = tesla::detail::tone_filter_mix(0) == 0
         && tesla::detail::tone_filter_mix(tesla::detail::tone_third) == opxy::q31::maximum
         && tesla::detail::tone_noise_amount(0) == 0
@@ -102,6 +106,9 @@ int main() {
     const bool unison = tesla::detail::modulator_increment(42852281u, 0) == 42852281u;
     const bool octave_down = tesla::detail::modulator_increment(42852281u, 0x7fffffff)
         == 21426140u;
+    const bool saturating_mix = tesla::detail::saturating_add(opxy::q31::maximum, 1)
+        == opxy::q31::maximum && tesla::detail::saturating_add(-opxy::q31::maximum, -1)
+        == -opxy::q31::maximum;
     if (!sounding) std::puts("FAIL silent");
     if (!bounded) std::puts("FAIL above the declared peak");
     if (!saw_changes_shape || !square_changes_shape) std::puts("FAIL waveform shapes do not differ");
@@ -112,8 +119,9 @@ int main() {
     if (!hard_sounds_bounded) std::puts("FAIL high-character settings exceed the declared peak");
     if (!tone_zones) std::puts("FAIL filter zones do not open, add then remove noise");
     if (!unison || !octave_down) std::puts("FAIL detune range");
+    if (!saturating_mix) std::puts("FAIL saturating mix");
     return sounding && bounded && saw_changes_shape && square_changes_shape && filter_changes_sound
         && noise_changes_sound && crush_changes_sound && spread_changes_sound && lfo_changes_sound
         && hard_sounds_bounded && tone_zones
-        && unison && octave_down ? 0 : 1;
+        && unison && octave_down && saturating_mix ? 0 : 1;
 }

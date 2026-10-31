@@ -9,11 +9,11 @@
     {"id":"detune","label":"Detune","default":0,"mapping":{"kind":"linear","minimum":0,"maximum":1},"display":"percent"},
     {"id":"crush","label":"Crush","control":0,"default":0,"mapping":{"kind":"linear","minimum":0,"maximum":1},"display":"percent"},
     {"id":"spread","label":"Spread","control":1,"default":0,"mapping":{"kind":"linear","minimum":0,"maximum":1},"display":"percent"},
-    {"id":"lfo_rate","label":"LFO Rate","control":2,"default":0.1,"mapping":{"kind":"linear","minimum":0,"maximum":1},"display":"percent"},
-    {"id":"lfo_amount","label":"LFO Amt","control":3,"default":0,"mapping":{"kind":"linear","minimum":0,"maximum":1},"display":"percent"}
+    {"id":"lfo_rate","label":"LFO Rate","control":2,"default":0,"mapping":{"kind":"linear","minimum":0,"maximum":1},"display":"percent"},
+    {"id":"lfo_amount","label":"LFO Amt","control":3,"default":0.5,"mapping":{"kind":"linear","minimum":0,"maximum":1},"display":"percent"}
   ],
   "presets": {
-    "Clean":{"modulation":0,"ground_noise":0,"phase_filter":0.5,"detune":0,"crush":0,"spread":0,"lfo_rate":0.1,"lfo_amount":0},
+    "Clean":{"modulation":0,"ground_noise":0,"phase_filter":0.5,"detune":0,"crush":0,"spread":0,"lfo_rate":0,"lfo_amount":0.5},
     "Arc":{"modulation":0.68,"ground_noise":0.3,"phase_filter":0.34,"detune":0.32,"crush":0,"spread":0.18,"lfo_rate":0.12,"lfo_amount":0.16},
     "Shortwave":{"modulation":0.92,"ground_noise":0.82,"phase_filter":0.85,"detune":0.7,"crush":0.28,"spread":0.24,"lfo_rate":0.2,"lfo_amount":0.36},
     "Rain":{"modulation":0.72,"ground_noise":0.64,"phase_filter":0.9,"detune":0.78,"crush":0.64,"spread":0.42,"lfo_rate":0.08,"lfo_amount":0.48},

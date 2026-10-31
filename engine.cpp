@@ -30,6 +30,15 @@ inline opxy::i32 crossfade(opxy::i32 dry, opxy::i32 wet, opxy::i32 amount) {
          + opxy::q31::multiply(wet, amount);
 }
 
+// Q31 multiplication is saturating, but combining independently bounded
+// signals still needs a saturating sum to preserve the declared output peak.
+inline opxy::i32 saturating_add(opxy::i32 first, opxy::i32 second) {
+    const opxy::i64 sum = static_cast<opxy::i64>(first) + second;
+    if (sum > opxy::q31::maximum) return opxy::q31::maximum;
+    if (sum < -static_cast<opxy::i64>(opxy::q31::maximum)) return -opxy::q31::maximum;
+    return static_cast<opxy::i32>(sum);
+}
+
 inline opxy::i32 saw(opxy::u32 phase) {
     // Recenter the unsigned phase ramp without a signed overflow. The result
     // is a full-scale, deliberately non-band-limited saw for a strong edge.
@@ -155,7 +164,7 @@ inline opxy::i32 spread(Voice& voice, opxy::i32 signal, const SpreadSettings& se
     // crossfade can comb-cancel the dry source and make Spread sound quieter.
     // Tone peaks at 0.75; the stronger one-third wet gain reaches, but cannot
     // exceed, the Q31 full-scale output at Spread's maximum setting.
-    return signal + opxy::q31::multiply(delayed, settings.wet);
+    return saturating_add(signal, opxy::q31::multiply(delayed, settings.wet));
 }
 }  // namespace detail
 
@@ -207,13 +216,12 @@ inline void render(Voice& voice, Shared&, opxy::u32, opxy::Output output,
     const opxy::i32 noise_amount = detail::tone_noise_amount(filter_tone);
     const opxy::i32 lfo_wave = lfo_amount ? detail::sine(voice.lfo_phase) : 0;
     const opxy::i32 filter_mix = detail::lfo_filter_mix(base_filter_mix, lfo_wave, lfo_amount);
-    // Give small turns useful movement, then add a modest convex lift near the
-    // top. At full scale this is 25% deeper than the previous full sweep; the
-    // bounded control offset naturally clips only at the waveform endpoints.
-    const opxy::i32 lfo_low_lift = opxy::q31::multiply(lfo_amount, 0x0ccccccc);
-    const opxy::i32 lfo_high_lift = opxy::q31::multiply(
-        opxy::q31::multiply(lfo_amount, lfo_amount), 0x13333333);
-    const opxy::i32 ampere_span = lfo_amount + lfo_low_lift + lfo_high_lift;
+    // Lift low/mid turns without ever passing a value above 1.0 to a Q31
+    // operation. Full depth remains one complete, bounded control sweep.
+    const opxy::i32 remaining_depth = opxy::q31::maximum - lfo_amount;
+    const opxy::i32 lfo_lift = opxy::q31::half(
+        opxy::q31::multiply(lfo_amount, remaining_depth));
+    const opxy::i32 ampere_span = lfo_amount + lfo_lift;
     const opxy::i32 animated_ampere = detail::offset_control(ampere,
         opxy::q31::multiply(lfo_wave, ampere_span));
     const opxy::i32 filter_coefficient = 0x02000000
@@ -239,7 +247,8 @@ inline void render(Voice& voice, Shared&, opxy::u32, opxy::Output output,
         opxy::i32 tone = filter_mix == opxy::q31::maximum
             ? source : detail::crossfade(voice.filter, source, filter_mix);
         if (noise_amount)
-            tone += opxy::q31::multiply(opxy::q31::half(detail::next_noise(voice)), noise_amount);
+            tone = detail::saturating_add(
+                tone, opxy::q31::multiply(opxy::q31::half(detail::next_noise(voice)), noise_amount));
         output[i] = detail::bit_crush(voice, detail::spread(voice, tone, spread_settings), crush_settings);
 
         voice.carrier_phase += pitch[i];
