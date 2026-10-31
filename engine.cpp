@@ -91,6 +91,15 @@ inline opxy::i32 offset_control(opxy::i32 value, opxy::i32 offset) {
     return value > opxy::q31::maximum - offset ? opxy::q31::maximum : value + offset;
 }
 
+inline opxy::i32 detune_lfo_depth(opxy::i32 depth, opxy::i32 detune) {
+    // The Ampere sweep becomes much more aggressive when the second oscillator
+    // is far from unison. Retain the full LFO at unison, tapering to 37.5% at
+    // maximum Detune so the modulation stays musical instead of abrasive.
+    const opxy::i32 attenuation = opxy::q31::maximum
+        - opxy::q31::multiply(detune, 0x50000000);
+    return opxy::q31::multiply(depth, attenuation);
+}
+
 inline opxy::i32 next_noise(Voice& voice) {
     voice.noise = voice.noise * 1664525u + 1013904223u;
     // Keep within +/- 0.5 so every later crossfade remains safely in Q31.
@@ -152,12 +161,12 @@ inline opxy::i32 spread(Voice& voice, opxy::i32 signal, const SpreadSettings& se
     voice.chorus_index = (index + 1u) & 511u;
     if (!settings.active) return signal;
 
-    // 5–11 ms, smoothly swept at roughly a quarter hertz: enough for a
-    // compact ensemble impression without the static beating of another
-    // detuned oscillator. A triangle selects the tap without a division.
+    // 4.7–16.2 ms, smoothly swept at roughly a quarter hertz: a broader
+    // ensemble impression without the static beating of another detuned
+    // oscillator. A triangle selects the tap without a division.
     const opxy::u32 folded = voice.chorus_phase & 0x80000000u
         ? ~voice.chorus_phase : voice.chorus_phase;
-    const opxy::u32 delay = 224u + ((folded >> 25) * 4u);
+    const opxy::u32 delay = 208u + ((folded >> 24) * 4u);
     const opxy::i32 delayed = voice.chorus[(index - delay) & 511u];
     voice.chorus_phase += settings.phase_increment;
     // Keep dry at full level and add a bounded wet layer. A replacing
@@ -210,18 +219,24 @@ inline void render(Voice& voice, Shared&, opxy::u32, opxy::Output output,
     // lower part of the control genuinely slow motion while 100% is ~12 Hz.
     const opxy::i32 lfo_square = opxy::q31::multiply(lfo_rate, lfo_rate);
     const opxy::i32 lfo_curve = opxy::q31::multiply(lfo_square, lfo_rate);
-    const opxy::u32 lfo_increment = 1949u + (static_cast<opxy::u32>(lfo_curve) >> 11)
-        + (static_cast<opxy::u32>(lfo_curve) >> 14);
+    // Rate 0 is a true bypass: Amount must not impose a per-voice static
+    // waveform offset (or advance a supposedly stopped LFO).
+    const bool lfo_running = lfo_rate != 0;
+    const opxy::u32 lfo_increment = lfo_running
+        ? 1949u + (static_cast<opxy::u32>(lfo_curve) >> 11)
+            + (static_cast<opxy::u32>(lfo_curve) >> 14)
+        : 0;
     const opxy::i32 base_filter_mix = detail::tone_filter_mix(filter_tone);
     const opxy::i32 noise_amount = detail::tone_noise_amount(filter_tone);
-    const opxy::i32 lfo_wave = lfo_amount ? detail::sine(voice.lfo_phase) : 0;
+    const opxy::i32 lfo_wave = lfo_running && lfo_amount
+        ? detail::sine(voice.lfo_phase) : 0;
     const opxy::i32 filter_mix = detail::lfo_filter_mix(base_filter_mix, lfo_wave, lfo_amount);
     // Lift low/mid turns without ever passing a value above 1.0 to a Q31
     // operation. Full depth remains one complete, bounded control sweep.
     const opxy::i32 remaining_depth = opxy::q31::maximum - lfo_amount;
     const opxy::i32 lfo_lift = opxy::q31::half(
         opxy::q31::multiply(lfo_amount, remaining_depth));
-    const opxy::i32 ampere_span = lfo_amount + lfo_lift;
+    const opxy::i32 ampere_span = detail::detune_lfo_depth(lfo_amount + lfo_lift, detune);
     const opxy::i32 animated_ampere = detail::offset_control(ampere,
         opxy::q31::multiply(lfo_wave, ampere_span));
     const opxy::i32 filter_coefficient = 0x02000000
@@ -232,27 +247,48 @@ inline void render(Voice& voice, Shared&, opxy::u32, opxy::Output output,
     const detail::CrushSettings crush_settings = detail::crush_settings(crush);
     const detail::SpreadSettings spread_settings = detail::spread_settings(spread);
 
-    for (unsigned i = 0; i < opxy::block_frames; ++i) {
-        const opxy::i32 primary = detail::waveform(animated_ampere, voice.carrier_phase);
-        const opxy::i32 secondary = detail::waveform(ground, voice.modulator_phase);
-        // At a small detune, two saws make a compact supersaw-like stack;
-        // square settings retain their fundamental because this is additive.
-        const opxy::i32 pair = opxy::q31::half(primary) + opxy::q31::half(secondary);
-        const opxy::i32 ring_modulated = opxy::q31::multiply(primary, secondary);
-        const opxy::i32 tesla_signal = detail::crossfade(pair, ring_modulated, am_amount);
-        // Reserve 6 dB for the optional noise layer. The one-pole state never
-        // exceeds that range, keeping its difference mathematically bounded.
-        const opxy::i32 source = opxy::q31::half(tesla_signal);
-        voice.filter += opxy::q31::multiply(source - voice.filter, filter_coefficient);
-        opxy::i32 tone = filter_mix == opxy::q31::maximum
-            ? source : detail::crossfade(voice.filter, source, filter_mix);
-        if (noise_amount)
-            tone = detail::saturating_add(
-                tone, opxy::q31::multiply(opxy::q31::half(detail::next_noise(voice)), noise_amount));
-        output[i] = detail::bit_crush(voice, detail::spread(voice, tone, spread_settings), crush_settings);
-
-        voice.carrier_phase += pitch[i];
-        voice.modulator_phase += detail::modulator_increment(pitch[i], detune);
+    // The raw-harmonics position is a common high-cost patch: avoid evaluating
+    // a crossfade that is algebraically identical to `source` on every sample.
+    if (filter_mix == opxy::q31::maximum) {
+        for (unsigned i = 0; i < opxy::block_frames; ++i) {
+            const opxy::i32 primary = detail::waveform(animated_ampere, voice.carrier_phase);
+            const opxy::i32 secondary = detail::waveform(ground, voice.modulator_phase);
+            const opxy::i32 pair = opxy::q31::half(primary) + opxy::q31::half(secondary);
+            const opxy::i32 ring_modulated = opxy::q31::multiply(primary, secondary);
+            const opxy::i32 source = opxy::q31::half(
+                detail::crossfade(pair, ring_modulated, am_amount));
+            voice.filter += opxy::q31::multiply(source - voice.filter, filter_coefficient);
+            opxy::i32 tone = source;
+            if (noise_amount)
+                tone = detail::saturating_add(
+                    tone, opxy::q31::multiply(opxy::q31::half(detail::next_noise(voice)), noise_amount));
+            output[i] = detail::bit_crush(
+                voice, detail::spread(voice, tone, spread_settings), crush_settings);
+            voice.carrier_phase += pitch[i];
+            voice.modulator_phase += detail::modulator_increment(pitch[i], detune);
+        }
+    } else {
+        for (unsigned i = 0; i < opxy::block_frames; ++i) {
+            const opxy::i32 primary = detail::waveform(animated_ampere, voice.carrier_phase);
+            const opxy::i32 secondary = detail::waveform(ground, voice.modulator_phase);
+            // At a small detune, two saws make a compact supersaw-like stack;
+            // square settings retain their fundamental because this is additive.
+            const opxy::i32 pair = opxy::q31::half(primary) + opxy::q31::half(secondary);
+            const opxy::i32 ring_modulated = opxy::q31::multiply(primary, secondary);
+            const opxy::i32 tesla_signal = detail::crossfade(pair, ring_modulated, am_amount);
+            // Reserve 6 dB for the optional noise layer. The one-pole state never
+            // exceeds that range, keeping its difference mathematically bounded.
+            const opxy::i32 source = opxy::q31::half(tesla_signal);
+            voice.filter += opxy::q31::multiply(source - voice.filter, filter_coefficient);
+            opxy::i32 tone = detail::crossfade(voice.filter, source, filter_mix);
+            if (noise_amount)
+                tone = detail::saturating_add(
+                    tone, opxy::q31::multiply(opxy::q31::half(detail::next_noise(voice)), noise_amount));
+            output[i] = detail::bit_crush(
+                voice, detail::spread(voice, tone, spread_settings), crush_settings);
+            voice.carrier_phase += pitch[i];
+            voice.modulator_phase += detail::modulator_increment(pitch[i], detune);
+        }
     }
     voice.lfo_phase += lfo_increment * opxy::block_frames;
 }

@@ -52,6 +52,8 @@ int main() {
                                     0x051eb852, 0, 0x60000000, 0, 0};
     const opxy::i32 lfo_motion[8] = {0x40000000, 0x40000000, 0x7fffffff,
                                       0x051eb852, 0, 0, 0x20000000, 0x7fffffff};
+    const opxy::i32 lfo_stopped[8] = {0x40000000, 0x40000000, 0x7fffffff,
+                                       0x051eb852, 0, 0, 0, 0x7fffffff};
     const opxy::i32 worst_case[8] = {0x7fffffff, 0x7fffffff, 0x7fffffff,
                                       0x7fffffff, 0, 0x7fffffff, 0x7fffffff, 0x7fffffff};
     opxy::u32 pitch[opxy::block_frames];
@@ -77,6 +79,7 @@ int main() {
     opxy::i32 dry_long_output[opxy::block_frames];
     opxy::i32 spread_output[opxy::block_frames];
     opxy::i32 lfo_output[opxy::block_frames];
+    opxy::i32 lfo_stopped_output[opxy::block_frames];
     opxy::i32 worst_case_output[opxy::block_frames];
     render_once(clean, pitch, clean_output);
     render_once(saw_stack, pitch, saw_output);
@@ -87,6 +90,7 @@ int main() {
     render_blocks(saw_stack, pitch, dry_long_output, 16);
     render_blocks(ensemble, pitch, spread_output, 16);
     render_once(lfo_motion, pitch, lfo_output);
+    render_once(lfo_stopped, pitch, lfo_stopped_output);
     render_blocks(worst_case, pitch, worst_case_output, 64);
     const bool saw_changes_shape = differs(clean_output, saw_output);
     const bool square_changes_shape = differs(saw_output, square_output);
@@ -95,6 +99,7 @@ int main() {
     const bool crush_changes_sound = differs(saw_output, crushed_output);
     const bool spread_changes_sound = differs(dry_long_output, spread_output);
     const bool lfo_changes_sound = differs(saw_output, lfo_output);
+    const bool stopped_lfo_is_neutral = !differs(saw_output, lfo_stopped_output);
     const bool hard_sounds_bounded = inside_peak(saw_output) && inside_peak(square_output)
         && inside_peak(low_pass_output) && inside_peak(noisy_output) && inside_peak(crushed_output)
         && inside_peak(spread_output) && inside_peak(lfo_output) && inside_peak(worst_case_output);
@@ -106,6 +111,10 @@ int main() {
     const bool unison = tesla::detail::modulator_increment(42852281u, 0) == 42852281u;
     const bool octave_down = tesla::detail::modulator_increment(42852281u, 0x7fffffff)
         == 21426140u;
+    const bool detune_tames_lfo = tesla::detail::detune_lfo_depth(opxy::q31::maximum, 0)
+        > 0x70000000
+        && tesla::detail::detune_lfo_depth(opxy::q31::maximum, opxy::q31::maximum)
+            < 0x40000000;
     const bool saturating_mix = tesla::detail::saturating_add(opxy::q31::maximum, 1)
         == opxy::q31::maximum && tesla::detail::saturating_add(-opxy::q31::maximum, -1)
         == -opxy::q31::maximum;
@@ -116,12 +125,15 @@ int main() {
     if (!crush_changes_sound) std::puts("FAIL bit crush does not change the signal");
     if (!spread_changes_sound) std::puts("FAIL spread does not change the signal");
     if (!lfo_changes_sound) std::puts("FAIL LFO does not change the signal");
+    if (!stopped_lfo_is_neutral) std::puts("FAIL Rate 0 LFO changes the sound");
     if (!hard_sounds_bounded) std::puts("FAIL high-character settings exceed the declared peak");
     if (!tone_zones) std::puts("FAIL filter zones do not open, add then remove noise");
     if (!unison || !octave_down) std::puts("FAIL detune range");
+    if (!detune_tames_lfo) std::puts("FAIL detune does not tame LFO depth");
     if (!saturating_mix) std::puts("FAIL saturating mix");
     return sounding && bounded && saw_changes_shape && square_changes_shape && filter_changes_sound
         && noise_changes_sound && crush_changes_sound && spread_changes_sound && lfo_changes_sound
+        && stopped_lfo_is_neutral
         && hard_sounds_bounded && tone_zones
-        && unison && octave_down && saturating_mix ? 0 : 1;
+        && unison && octave_down && detune_tames_lfo && saturating_mix ? 0 : 1;
 }
