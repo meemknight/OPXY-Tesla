@@ -70,11 +70,14 @@ inline void tone_caption(char* out, opxy::u32 capacity, opxy::i32 tone) {
     const char* label = "raw";
     opxy::i32 amount = opxy::q31::maximum;
     if (tone < third) {
-        label = "low";
+        label = "lp";
         amount = third - tone;
     } else if (tone >= two_thirds) {
         label = "nz";
         amount = tone - two_thirds;
+    } else {
+        copy(out, capacity, label);
+        return;
     }
     char number[4] = {};
     header_amount(number, sizeof(number), tone_zone_amount(amount));
