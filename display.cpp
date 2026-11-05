@@ -2,7 +2,7 @@
 #include <opxy/q31.hpp>
 
 namespace tesla {
-inline void display_reset(DisplayState& state) { state.phase = 0; state.header.reset(); }
+inline void display_reset(DisplayState& state) { state.phase = 0; state.lfo_phase = 0; state.header.reset(); }
 
 // The display mirrors the oscillator control law: sine → saw → square. The
 // waveform scrolls slowly but its shape is always determined by its control.
@@ -103,6 +103,23 @@ inline void display(DisplayState& state, const opxy::draw::Input& input, Frame& 
     if (!input.reduced_motion && held)
         state.phase = (state.phase + static_cast<opxy::u32>(clamp(input.elapsed, 0, 102)) * 4u) % 3600u;
 
+    // Follow the engine's cubic rate curve. The display has its own phase;
+    // audio LFO phases are per voice and are not available to the UI.
+    const opxy::i32 lfo_rate = input.slots[6];
+    if (!input.reduced_motion && held && lfo_rate) {
+        const opxy::i32 square = opxy::q31::multiply(lfo_rate, lfo_rate);
+        const opxy::u32 curve = static_cast<opxy::u32>(opxy::q31::multiply(square, lfo_rate));
+        const opxy::u32 increment = 1949u + (curve >> 11) + (curve >> 14);
+        // elapsed is Q10 seconds, not milliseconds.
+        state.lfo_phase += static_cast<opxy::u32>(static_cast<opxy::i64>(increment)
+            * static_cast<opxy::u32>(clamp(input.elapsed, 0, 102)) * 44100u / 1024u);
+    }
+    const opxy::i32 lfo_angle = static_cast<opxy::i32>((static_cast<opxy::i64>(state.lfo_phase) * 3600u) >> 32);
+    const opxy::i32 lfo_level = lfo_rate ? (sine(lfo_angle) + unit) / 2 : 0;
+    const opxy::i32 color_motion = (lfo_level * (input.slots[7] >> 21)) / 1024;
+    const opxy::u32 left_shade = color_motion >= 320 ? 8 : color_motion >= 64 ? 7 : 1;
+    const opxy::u32 right_shade = color_motion >= 320 ? 8 : color_motion >= 64 ? 9 : 2;
+
     const opxy::i32 phase = static_cast<opxy::i32>(state.phase);
     // The left scope is Ampere and the right scope is Ground. The right edge
     // starts at Ampere's centre endpoint, making one continuous electric arc.
@@ -136,8 +153,8 @@ inline void display(DisplayState& state, const opxy::draw::Input& input, Frame& 
     const opxy::i32 arc_scale = arc_span * unit / 124;
     const opxy::i32 left_arc_x = (116 + coil_offset) * unit + 60 * arc_scale;
     const opxy::i32 right_arc_x = 240 * unit + 60 * arc_scale;
-    place(frame, 0, left_arc_x, 90 * unit, arc_scale, 1, fill_and_stroke);
-    place(frame, 1, right_arc_x, 90 * unit, arc_scale, 2, fill_and_stroke);
+    place(frame, 0, left_arc_x, 90 * unit, arc_scale, left_shade, fill_and_stroke);
+    place(frame, 1, right_arc_x, 90 * unit, arc_scale, right_shade, fill_and_stroke);
     place(frame, 2, left_arc_x, 90 * unit, arc_scale, 1, fill_and_stroke);
     place(frame, 3, right_arc_x, 90 * unit, arc_scale, 2, fill_and_stroke);
     // Static silhouettes are bound nodes so the native retained renderer keeps

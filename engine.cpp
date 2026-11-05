@@ -116,11 +116,11 @@ inline opxy::u32 modulator_increment(opxy::u32 carrier, opxy::i32 detune) {
 
 struct CrushSettings {
     opxy::u32 active, discarded;
-    opxy::i32 blend;
+    opxy::i32 blend, wet;
 };
 
 inline CrushSettings crush_settings(opxy::i32 amount) {
-    CrushSettings settings = {0, 0, 0};
+    CrushSettings settings = {0, 0, 0, 0};
     if (!amount) return settings;
     // Quantize amplitude without sample-rate reduction: an independent hold
     // clock produces inharmonic aliases that can sound like detuning.
@@ -130,16 +130,15 @@ inline CrushSettings crush_settings(opxy::i32 amount) {
     const opxy::u32 position = static_cast<opxy::u32>(amount) * 2u;
     settings.discarded = 28u + (position >> 31);
     settings.blend = static_cast<opxy::i32>(position & 0x7fffffffu);
+    settings.wet = amount < 0x20000000 ? amount * 4 : opxy::q31::maximum;
     return settings;
 }
 
 inline opxy::i32 quantize_crush(opxy::i32 signal, opxy::u32 discarded) {
-    // Truncate magnitude toward zero: unlike rounding away from zero this
-    // cannot make a quiet sample louder at a coarse quantization threshold.
-    // Treat both signs alike to avoid a DC offset.
+    // Round symmetrically to avoid the negative DC offset of signed masking.
     const opxy::u32 magnitude = signal < 0
         ? 0u - static_cast<opxy::u32>(signal) : static_cast<opxy::u32>(signal);
-    const opxy::u32 quantized = magnitude & (0xffffffffu << discarded);
+    const opxy::u32 quantized = (magnitude + (1u << (discarded - 1))) & (0xffffffffu << discarded);
     const opxy::i32 bounded = quantized > static_cast<opxy::u32>(opxy::q31::maximum)
         ? opxy::q31::maximum : static_cast<opxy::i32>(quantized);
     return signal < 0 ? -bounded : bounded;
@@ -152,7 +151,14 @@ inline opxy::i32 bit_crush(Voice& voice, opxy::i32 signal, const CrushSettings& 
     }
     const opxy::i32 fine = quantize_crush(signal, settings.discarded);
     const opxy::i32 coarse = quantize_crush(signal, settings.discarded + 1u);
-    voice.crushed = crossfade(fine, coarse, settings.blend);
+    const opxy::i32 stepped = crossfade(fine, coarse, settings.blend);
+    // Limit the quantization error to a quarter of the input magnitude. This
+    // retains the original note level even when a coarse step spans zero.
+    const opxy::i64 difference = static_cast<opxy::i64>(stepped) - signal;
+    const opxy::i32 magnitude = signal < 0 ? static_cast<opxy::i32>(-(static_cast<opxy::i64>(signal) + 1)) : signal;
+    const opxy::i32 limit = magnitude / 4;
+    const opxy::i32 bounded_error = difference > limit ? limit : difference < -static_cast<opxy::i64>(limit) ? -limit : static_cast<opxy::i32>(difference);
+    voice.crushed = saturating_add(signal, opxy::q31::multiply(bounded_error, settings.wet));
     // Soften quantization edges while retaining their stepped tone.
     // Halving before addition keeps the sum within the signed Q31 range.
     voice.crush_smooth = saturating_add(opxy::q31::half(voice.crush_smooth),
@@ -192,7 +198,10 @@ inline opxy::i32 spread(Voice& voice, opxy::i32 signal, const SpreadSettings& se
     // crossfade can comb-cancel the dry source and make Spread sound quieter.
     // Tone peaks at 0.75; the stronger one-third wet gain reaches, but cannot
     // exceed, the Q31 full-scale output at Spread's maximum setting.
-    return saturating_add(signal, opxy::q31::multiply(delayed, settings.wet));
+    // SDK 1.7 provides native saturating addition on the device. Preserve the
+    // engine's symmetric peak limit, including the single negative endpoint.
+    const opxy::i32 mixed = opxy::q31::add(signal, opxy::q31::multiply(delayed, settings.wet));
+    return mixed < -opxy::q31::maximum ? -opxy::q31::maximum : mixed;
 }
 }  // namespace detail
 

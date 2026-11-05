@@ -23,7 +23,7 @@
   "resources": {
     "voiceBytes":2088,"voiceAlignment":4,"voiceCapacity":8,"sharedBytes":0,
     "outputPeakQ31":2147483647,
-    "display":{"stateBytes":24,"stateAlignment":4,"paths":4,"points":64,"nodes":30,"texts":16,"palette":16}
+    "display":{"stateBytes":28,"stateAlignment":4,"paths":4,"points":64,"nodes":30,"texts":16,"palette":16}
   },
   "press":"page"
 }

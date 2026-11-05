@@ -133,7 +133,26 @@ int main() {
     const bool saturating_mix = tesla::detail::saturating_add(opxy::q31::maximum, 1)
         == opxy::q31::maximum && tesla::detail::saturating_add(-opxy::q31::maximum, -1)
         == -opxy::q31::maximum;
-    bool crush_symmetric = true, crush_continuous = true, crush_no_amplification = true;
+    const opxy::i32 edge_values[] = {-2147483647 - 1, -2147483647, -1073741824, -1,
+                                     0, 1, 1073741824, 2147483647};
+    bool spread_saturation_matches = true;
+    for (unsigned a = 0; a < 8; ++a) for (unsigned b = 0; b < 8; ++b) {
+        const opxy::i32 sum = opxy::q31::add(edge_values[a], edge_values[b]);
+        const opxy::i32 bounded = sum < -opxy::q31::maximum ? -opxy::q31::maximum : sum;
+        spread_saturation_matches = spread_saturation_matches
+            && bounded == tesla::detail::saturating_add(edge_values[a], edge_values[b]);
+    }
+    bool crush_symmetric = true, crush_continuous = true, crush_level_bounded = true;
+    bool crush_quiet_signal_audible = true;
+    for (unsigned step = 1; step <= 16; ++step) {
+        tesla::Voice quiet_voice = {};
+        const opxy::i32 amount = static_cast<opxy::i32>((static_cast<opxy::i64>(opxy::q31::maximum) * step) / 16);
+        const tesla::detail::CrushSettings setting = tesla::detail::crush_settings(amount);
+        opxy::i32 result = 0;
+        for (unsigned sample = 0; sample < 64; ++sample)
+            result = tesla::detail::bit_crush(quiet_voice, 0x10000000, setting);
+        crush_quiet_signal_audible = crush_quiet_signal_audible && result >= 0x07000000;
+    }
     const opxy::i32 boundaries[] = {0x40000000, 0x60000000};
     for (unsigned b = 0; b < 2; ++b) {
         for (opxy::i32 sample = 0x02000000; sample < 0x70000000; sample += 0x02000000) {
@@ -142,7 +161,8 @@ int main() {
             const opxy::i32 positive = tesla::detail::bit_crush(plus, sample, setting);
             const opxy::i32 negative = tesla::detail::bit_crush(minus, -sample, setting);
             crush_symmetric = crush_symmetric && positive + negative >= -4 && positive + negative <= 4;
-            crush_no_amplification = crush_no_amplification && positive <= sample && negative >= -sample;
+            const opxy::i64 upper = static_cast<opxy::i64>(sample) * 5 / 8 + 4;
+            crush_level_bounded = crush_level_bounded && positive <= upper && negative >= -upper;
             const opxy::i32 a = tesla::detail::bit_crush(before, sample,
                 tesla::detail::crush_settings(boundaries[b] - 0x10000));
             const opxy::i32 z = tesla::detail::bit_crush(after, sample,
@@ -165,12 +185,16 @@ int main() {
     if (!pitch_is_sample_accurate) std::puts("FAIL changing pitch phase accuracy");
     if (!detune_tames_lfo) std::puts("FAIL detune does not tame LFO depth");
     if (!saturating_mix) std::puts("FAIL saturating mix");
-    if (!crush_symmetric || !crush_continuous || !crush_no_amplification)
+    if (!spread_saturation_matches) std::puts("FAIL spread mixer saturation equivalence");
+    if (!crush_symmetric || !crush_continuous || !crush_level_bounded)
         std::puts("FAIL crush symmetry, control continuity or level");
+    if (!crush_quiet_signal_audible) std::puts("FAIL crush silences quiet input");
     return sounding && bounded && saw_changes_shape && square_changes_shape && filter_changes_sound
         && noise_changes_sound && crush_changes_sound && spread_changes_sound && lfo_changes_sound
         && stopped_lfo_is_neutral
         && hard_sounds_bounded && tone_zones
         && unison && octave_down && pitch_is_sample_accurate && detune_tames_lfo && saturating_mix
-        && crush_symmetric && crush_continuous && crush_no_amplification ? 0 : 1;
+        && spread_saturation_matches
+        && crush_symmetric && crush_continuous && crush_level_bounded
+        && crush_quiet_signal_audible ? 0 : 1;
 }
