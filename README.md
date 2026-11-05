@@ -61,10 +61,39 @@ Keep firmware and stock content outside every checkout. Commit the machine,
 build with profiling enabled, install when authorized and collect three runs.
 The host estimate printed by `test` cannot substitute for those measurements.
 
-For the builder, follow [catalog submission](https://github.com/etcetc000/open-xy/blob/staging/docs/catalog.md#submit-a-machine).
-Every new or changed draft/published entry needs a hardware CPU record tied to
-its pinned commit. Hardware validation may be performed by a maintainer if you
-do not own an XY. Publication remains pending until that evidence is available.
+### Hardware CPU measurement
+
+On OP-XY OS 1.2.1, the SDK's `opxy-synth-c8-sweep-v1` diagnostic measured
+Tesla commit `299017eeca2bb2cf81480c20937bc92cc6a7af46`. The median of three
+complete captures was **3.282216%** of the stock audio block budget at its
+heaviest setting (Spread 75%), below the recommended 3.5%. The midpoint was
+2.6215%, and the combined heaviest-control run was 2.796979%.
+
+This is a synthetic whole-voice test, including oscillator and filter; it is
+not a measurement of a full project, graphics, or maximum polyphony. Normal
+playing and the machine's device checklist still need separate validation.
+
+For [catalog submission](https://github.com/etcetc000/open-xy/blob/staging/docs/catalog.md#submit-a-machine),
+the SDK-generated `cpu` record for the measured revision is:
+
+```json
+{
+  "benchmark": "opxy-synth-c8-sweep-v1",
+  "commit": "299017eeca2bb2cf81480c20937bc92cc6a7af46",
+  "firmware_sha256": "68e3ecf9391d14f9d9850c7d1d77f8f6eab878e7ce20fb7f241b5e4755125bc2",
+  "runs": 3,
+  "block_percent": 3.282216,
+  "midpoint_percent": 2.6215,
+  "combined_percent": 2.796979,
+  "worst_setting": {"control": 5, "label": "Spread", "value": 1610612735}
+}
+```
+
+The catalog must pin the measured commit. Committing this README creates a new
+commit and does not automatically transfer this record to it; remeasure the
+new revision or request a maintainer-approved CPU carry for a change that
+cannot affect performance. Keep raw captures and firmware private; publish the
+generated report separately if a public evidence link is needed.
 
 The generated starter is covered by [LICENSE](LICENSE). Preserve notices for
 code you reuse and include the licences of any dependencies or ports.

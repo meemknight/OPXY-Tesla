@@ -133,6 +133,24 @@ int main() {
     const bool saturating_mix = tesla::detail::saturating_add(opxy::q31::maximum, 1)
         == opxy::q31::maximum && tesla::detail::saturating_add(-opxy::q31::maximum, -1)
         == -opxy::q31::maximum;
+    bool crush_symmetric = true, crush_continuous = true, crush_no_amplification = true;
+    const opxy::i32 boundaries[] = {0x40000000, 0x60000000};
+    for (unsigned b = 0; b < 2; ++b) {
+        for (opxy::i32 sample = 0x02000000; sample < 0x70000000; sample += 0x02000000) {
+            tesla::Voice plus = {}, minus = {}, before = {}, after = {};
+            const tesla::detail::CrushSettings setting = tesla::detail::crush_settings(boundaries[b]);
+            const opxy::i32 positive = tesla::detail::bit_crush(plus, sample, setting);
+            const opxy::i32 negative = tesla::detail::bit_crush(minus, -sample, setting);
+            crush_symmetric = crush_symmetric && positive + negative >= -4 && positive + negative <= 4;
+            crush_no_amplification = crush_no_amplification && positive <= sample && negative >= -sample;
+            const opxy::i32 a = tesla::detail::bit_crush(before, sample,
+                tesla::detail::crush_settings(boundaries[b] - 0x10000));
+            const opxy::i32 z = tesla::detail::bit_crush(after, sample,
+                tesla::detail::crush_settings(boundaries[b] + 0x10000));
+            const opxy::i64 difference = static_cast<opxy::i64>(a) - z;
+            crush_continuous = crush_continuous && difference > -0x100000 && difference < 0x100000;
+        }
+    }
     if (!sounding) std::puts("FAIL silent");
     if (!bounded) std::puts("FAIL above the declared peak");
     if (!saw_changes_shape || !square_changes_shape) std::puts("FAIL waveform shapes do not differ");
@@ -147,9 +165,12 @@ int main() {
     if (!pitch_is_sample_accurate) std::puts("FAIL changing pitch phase accuracy");
     if (!detune_tames_lfo) std::puts("FAIL detune does not tame LFO depth");
     if (!saturating_mix) std::puts("FAIL saturating mix");
+    if (!crush_symmetric || !crush_continuous || !crush_no_amplification)
+        std::puts("FAIL crush symmetry, control continuity or level");
     return sounding && bounded && saw_changes_shape && square_changes_shape && filter_changes_sound
         && noise_changes_sound && crush_changes_sound && spread_changes_sound && lfo_changes_sound
         && stopped_lfo_is_neutral
         && hard_sounds_bounded && tone_zones
-        && unison && octave_down && pitch_is_sample_accurate && detune_tames_lfo && saturating_mix ? 0 : 1;
+        && unison && octave_down && pitch_is_sample_accurate && detune_tames_lfo && saturating_mix
+        && crush_symmetric && crush_continuous && crush_no_amplification ? 0 : 1;
 }
