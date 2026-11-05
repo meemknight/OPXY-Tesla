@@ -64,10 +64,10 @@ The host estimate printed by `test` cannot substitute for those measurements.
 ### Hardware CPU measurement
 
 On OP-XY OS 1.2.1, the SDK's `opxy-synth-c8-sweep-v1` diagnostic measured
-Tesla commit `299017eeca2bb2cf81480c20937bc92cc6a7af46`. The median of three
-complete captures was **3.282216%** of the stock audio block budget at its
-heaviest setting (Spread 75%), below the recommended 3.5%. The midpoint was
-2.6215%, and the combined heaviest-control run was 2.796979%.
+Tesla commit `a03e42c57f7e62440c3e76c41120946bade75145`. The median of three
+complete captures was **3.132677%** of the stock audio block budget at its
+heaviest setting (Crush 12.5%), below the recommended 3.5%. The midpoint was
+2.317845%, and the combined heaviest-control run was 2.384985%.
 
 This is a synthetic whole-voice test, including oscillator and filter; it is
 not a measurement of a full project, graphics, or maximum polyphony. Normal
@@ -79,13 +79,13 @@ the SDK-generated `cpu` record for the measured revision is:
 ```json
 {
   "benchmark": "opxy-synth-c8-sweep-v1",
-  "commit": "299017eeca2bb2cf81480c20937bc92cc6a7af46",
-  "firmware_sha256": "68e3ecf9391d14f9d9850c7d1d77f8f6eab878e7ce20fb7f241b5e4755125bc2",
+  "commit": "a03e42c57f7e62440c3e76c41120946bade75145",
+  "firmware_sha256": "dbd5d39e8d93668b86ab925ae834b031bcae0443ecd279eab08be4253a02fbb7",
   "runs": 3,
-  "block_percent": 3.282216,
-  "midpoint_percent": 2.6215,
-  "combined_percent": 2.796979,
-  "worst_setting": {"control": 5, "label": "Spread", "value": 1610612735}
+  "block_percent": 3.132677,
+  "midpoint_percent": 2.317845,
+  "combined_percent": 2.384985,
+  "worst_setting": {"control": 4, "label": "Crush", "value": 268435455}
 }
 ```
 
