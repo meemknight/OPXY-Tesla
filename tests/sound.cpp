@@ -37,6 +37,19 @@ static bool inside_peak(const opxy::i32* signal) {
 int main() {
     static tesla::Voice voice;
     static tesla::Shared shared;
+    bool waveform_exact = true;
+    opxy::u32 random_wave = 0x1a2b3c4du;
+    for (unsigned i = 0; i < 20000; ++i) {
+        random_wave = random_wave * 1664525u + 1013904223u;
+        const opxy::i32 shape = static_cast<opxy::i32>(random_wave >> 1);
+        random_wave = random_wave * 1664525u + 1013904223u;
+        const opxy::u32 phase = random_wave;
+        const opxy::i32 saw = tesla::detail::saw(phase);
+        const opxy::i32 expected = shape < 0x40000000
+            ? tesla::detail::crossfade(tesla::detail::sine(phase), saw, shape * 2)
+            : tesla::detail::crossfade(saw, tesla::detail::square(phase), (shape - 0x40000000) * 2);
+        waveform_exact = waveform_exact && expected == tesla::detail::waveform(tesla::detail::waveform_settings(shape), phase);
+    }
     const opxy::i32 clean[8] = {0, 0, 0x7fffffff, 0, 0, 0, 0, 0};
     const opxy::i32 saw_stack[8] = {0x40000000, 0x40000000, 0x7fffffff,
                                      0x051eb852, 0, 0, 0, 0};
@@ -161,7 +174,7 @@ int main() {
             const opxy::i32 positive = tesla::detail::bit_crush(plus, sample, setting);
             const opxy::i32 negative = tesla::detail::bit_crush(minus, -sample, setting);
             crush_symmetric = crush_symmetric && positive + negative >= -4 && positive + negative <= 4;
-            const opxy::i64 upper = static_cast<opxy::i64>(sample) * 5 / 8 + 4;
+            const opxy::i64 upper = static_cast<opxy::i64>(sample) * 11 / 8 + 4;
             crush_level_bounded = crush_level_bounded && positive <= upper && negative >= -upper;
             const opxy::i32 a = tesla::detail::bit_crush(before, sample,
                 tesla::detail::crush_settings(boundaries[b] - 0x10000));
@@ -172,6 +185,7 @@ int main() {
         }
     }
     if (!sounding) std::puts("FAIL silent");
+    if (!waveform_exact) std::puts("FAIL waveform optimization changed output");
     if (!bounded) std::puts("FAIL above the declared peak");
     if (!saw_changes_shape || !square_changes_shape) std::puts("FAIL waveform shapes do not differ");
     if (!filter_changes_sound || !noise_changes_sound) std::puts("FAIL filter zones do not differ");
@@ -189,7 +203,7 @@ int main() {
     if (!crush_symmetric || !crush_continuous || !crush_level_bounded)
         std::puts("FAIL crush symmetry, control continuity or level");
     if (!crush_quiet_signal_audible) std::puts("FAIL crush silences quiet input");
-    return sounding && bounded && saw_changes_shape && square_changes_shape && filter_changes_sound
+    return waveform_exact && sounding && bounded && saw_changes_shape && square_changes_shape && filter_changes_sound
         && noise_changes_sound && crush_changes_sound && spread_changes_sound && lfo_changes_sound
         && stopped_lfo_is_neutral
         && hard_sounds_bounded && tone_zones

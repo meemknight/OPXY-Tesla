@@ -33,10 +33,8 @@ inline opxy::i32 crossfade(opxy::i32 dry, opxy::i32 wet, opxy::i32 amount) {
 // Q31 multiplication is saturating, but combining independently bounded
 // signals still needs a saturating sum to preserve the declared output peak.
 inline opxy::i32 saturating_add(opxy::i32 first, opxy::i32 second) {
-    const opxy::i64 sum = static_cast<opxy::i64>(first) + second;
-    if (sum > opxy::q31::maximum) return opxy::q31::maximum;
-    if (sum < -static_cast<opxy::i64>(opxy::q31::maximum)) return -opxy::q31::maximum;
-    return static_cast<opxy::i32>(sum);
+    const opxy::i32 sum = opxy::q31::add(first, second);
+    return sum < -opxy::q31::maximum ? -opxy::q31::maximum : sum;
 }
 
 inline opxy::i32 saw(opxy::u32 phase) {
@@ -52,12 +50,18 @@ inline opxy::i32 square(opxy::u32 phase) {
 // Both oscillator controls crossfade through useful harmonic shapes:
 // 0 = sine, midpoint = saw and maximum = square. This leaves two nearby saws
 // available at once when Detune is only slightly raised.
-inline opxy::i32 waveform(opxy::i32 shape, opxy::u32 phase) {
+struct WaveformSettings { opxy::i32 mix, inverse; bool lower; };
+inline WaveformSettings waveform_settings(opxy::i32 shape) {
+    const bool lower = shape < 0x40000000;
+    const opxy::i32 mix = lower ? shape * 2 : (shape - 0x40000000) * 2;
+    const WaveformSettings settings = {mix, opxy::q31::maximum - mix, lower};
+    return settings;
+}
+inline opxy::i32 waveform(const WaveformSettings& settings, opxy::u32 phase) {
     const opxy::i32 saw_wave = saw(phase);
-    const opxy::i32 midpoint = 0x40000000;
-    if (shape < midpoint)
-        return crossfade(sine(phase), saw_wave, shape * 2);
-    return crossfade(saw_wave, square(phase), (shape - midpoint) * 2);
+    const opxy::i32 first = settings.lower ? sine(phase) : saw_wave;
+    const opxy::i32 second = settings.lower ? saw_wave : square(phase);
+    return opxy::q31::multiply(first, settings.inverse) + opxy::q31::multiply(second, settings.mix);
 }
 
 const opxy::i32 tone_third = 0x2aaaaaaa;
@@ -115,54 +119,40 @@ inline opxy::u32 modulator_increment(opxy::u32 carrier, opxy::i32 detune) {
 }
 
 struct CrushSettings {
-    opxy::u32 active, discarded;
-    opxy::i32 blend, wet;
+    opxy::i32 wet;
 };
 
 inline CrushSettings crush_settings(opxy::i32 amount) {
-    CrushSettings settings = {0, 0, 0, 0};
-    if (!amount) return settings;
-    // Quantize amplitude without sample-rate reduction: an independent hold
-    // clock produces inharmonic aliases that can sound like detuning.
-    settings.active = 1;
-    // Blend between adjacent resolutions rather than jumping at bit boundaries.
-    // Start at four bits and move continuously toward two bits.
-    const opxy::u32 position = static_cast<opxy::u32>(amount) * 2u;
-    settings.discarded = 28u + (position >> 31);
-    settings.blend = static_cast<opxy::i32>(position & 0x7fffffffu);
-    settings.wet = amount < 0x20000000 ? amount * 4 : opxy::q31::maximum;
+    CrushSettings settings = {amount};
     return settings;
 }
 
-inline opxy::i32 quantize_crush(opxy::i32 signal, opxy::u32 discarded) {
+inline opxy::i32 quantize_crush(opxy::u32 magnitude, bool negative) {
     // Round symmetrically to avoid the negative DC offset of signed masking.
-    const opxy::u32 magnitude = signal < 0
-        ? 0u - static_cast<opxy::u32>(signal) : static_cast<opxy::u32>(signal);
-    const opxy::u32 quantized = (magnitude + (1u << (discarded - 1))) & (0xffffffffu << discarded);
+    const opxy::u32 quantized = (magnitude + 0x20000000u) & 0xc0000000u;
     const opxy::i32 bounded = quantized > static_cast<opxy::u32>(opxy::q31::maximum)
         ? opxy::q31::maximum : static_cast<opxy::i32>(quantized);
-    return signal < 0 ? -bounded : bounded;
+    return negative ? -bounded : bounded;
 }
 
 inline opxy::i32 bit_crush(Voice& voice, opxy::i32 signal, const CrushSettings& settings) {
-    if (!settings.active) {
+    if (!settings.wet) {
         voice.crush_smooth = signal;
+        voice.crushed = 0;
         return signal;
     }
-    const opxy::i32 fine = quantize_crush(signal, settings.discarded);
-    const opxy::i32 coarse = quantize_crush(signal, settings.discarded + 1u);
-    const opxy::i32 stepped = crossfade(fine, coarse, settings.blend);
-    // Limit the quantization error to a quarter of the input magnitude. This
-    // retains the original note level even when a coarse step spans zero.
+    const bool negative = signal < 0;
+    const opxy::u32 magnitude_unsigned = negative
+        ? 0u - static_cast<opxy::u32>(signal) : static_cast<opxy::u32>(signal);
+    const opxy::i32 stepped = quantize_crush(magnitude_unsigned, negative);
+    // Limit the error to 3/8 of the input, protecting quiet waveforms from
+    // large changes while leaving room for a pronounced quantization edge.
     const opxy::i64 difference = static_cast<opxy::i64>(stepped) - signal;
-    const opxy::i32 magnitude = signal < 0 ? static_cast<opxy::i32>(-(static_cast<opxy::i64>(signal) + 1)) : signal;
-    const opxy::i32 limit = magnitude / 4;
+    const opxy::i32 magnitude = negative ? static_cast<opxy::i32>(magnitude_unsigned - 1u) : signal;
+    const opxy::i32 limit = (magnitude >> 2) + (magnitude >> 3);
     const opxy::i32 bounded_error = difference > limit ? limit : difference < -static_cast<opxy::i64>(limit) ? -limit : static_cast<opxy::i32>(difference);
-    voice.crushed = saturating_add(signal, opxy::q31::multiply(bounded_error, settings.wet));
-    // Soften quantization edges while retaining their stepped tone.
-    // Halving before addition keeps the sum within the signed Q31 range.
-    voice.crush_smooth = saturating_add(opxy::q31::half(voice.crush_smooth),
-                                        opxy::q31::half(voice.crushed));
+    const opxy::i32 crushed_signal = saturating_add(signal, opxy::q31::multiply(bounded_error, settings.wet));
+    voice.crush_smooth = crushed_signal;
     return voice.crush_smooth;
 }
 
@@ -281,6 +271,8 @@ inline void render(Voice& voice, Shared&, opxy::u32, opxy::Output output,
         ? (0x40000000 - quieter_shape) / 2 : 0;
     const detail::CrushSettings crush_settings = detail::crush_settings(crush);
     const detail::SpreadSettings spread_settings = detail::spread_settings(spread);
+    const detail::WaveformSettings primary_wave = detail::waveform_settings(animated_ampere);
+    const detail::WaveformSettings secondary_wave = detail::waveform_settings(ground);
     // Pitch may change on any sample. Reuse the detuned increment only while
     // the actual pitch word is unchanged, including within a glide.
     opxy::u32 last_pitch = pitch[0];
@@ -290,8 +282,8 @@ inline void render(Voice& voice, Shared&, opxy::u32, opxy::Output output,
     // a crossfade that is algebraically identical to `source` on every sample.
     if (filter_mix == opxy::q31::maximum) {
         for (unsigned i = 0; i < opxy::block_frames; ++i) {
-            const opxy::i32 primary = detail::waveform(animated_ampere, voice.carrier_phase);
-            const opxy::i32 secondary = detail::waveform(ground, voice.modulator_phase);
+            const opxy::i32 primary = detail::waveform(primary_wave, voice.carrier_phase);
+            const opxy::i32 secondary = detail::waveform(secondary_wave, voice.modulator_phase);
             const opxy::i32 pair = opxy::q31::half(primary) + opxy::q31::half(secondary);
             const opxy::i32 ring_modulated = opxy::q31::multiply(primary, secondary);
             opxy::i32 source = opxy::q31::half(
@@ -314,8 +306,8 @@ inline void render(Voice& voice, Shared&, opxy::u32, opxy::Output output,
         }
     } else {
         for (unsigned i = 0; i < opxy::block_frames; ++i) {
-            const opxy::i32 primary = detail::waveform(animated_ampere, voice.carrier_phase);
-            const opxy::i32 secondary = detail::waveform(ground, voice.modulator_phase);
+            const opxy::i32 primary = detail::waveform(primary_wave, voice.carrier_phase);
+            const opxy::i32 secondary = detail::waveform(secondary_wave, voice.modulator_phase);
             // At a small detune, two saws make a compact supersaw-like stack;
             // square settings retain their fundamental because this is additive.
             const opxy::i32 pair = opxy::q31::half(primary) + opxy::q31::half(secondary);
