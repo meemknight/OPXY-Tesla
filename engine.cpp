@@ -257,6 +257,10 @@ inline void render(Voice& voice, Shared&, opxy::u32, opxy::Output output,
         ? (0x40000000 - quieter_shape) / 2 : 0;
     const detail::CrushSettings crush_settings = detail::crush_settings(crush);
     const detail::SpreadSettings spread_settings = detail::spread_settings(spread);
+    // Pitch may change on any sample. Reuse the detuned increment only while
+    // the actual pitch word is unchanged, including within a glide.
+    opxy::u32 last_pitch = pitch[0];
+    opxy::u32 detuned_pitch = detail::modulator_increment(last_pitch, detune);
 
     // The raw-harmonics position is a common high-cost patch: avoid evaluating
     // a crossfade that is algebraically identical to `source` on every sample.
@@ -276,8 +280,13 @@ inline void render(Voice& voice, Shared&, opxy::u32, opxy::Output output,
                     tone, opxy::q31::multiply(opxy::q31::half(detail::next_noise(voice)), noise_amount));
             output[i] = detail::bit_crush(
                 voice, detail::spread(voice, tone, spread_settings), crush_settings);
-            voice.carrier_phase += pitch[i];
-            voice.modulator_phase += detail::modulator_increment(pitch[i], detune);
+            const opxy::u32 current_pitch = pitch[i];
+            if (current_pitch != last_pitch) {
+                last_pitch = current_pitch;
+                detuned_pitch = detail::modulator_increment(current_pitch, detune);
+            }
+            voice.carrier_phase += current_pitch;
+            voice.modulator_phase += detuned_pitch;
         }
     } else {
         for (unsigned i = 0; i < opxy::block_frames; ++i) {
@@ -298,8 +307,13 @@ inline void render(Voice& voice, Shared&, opxy::u32, opxy::Output output,
                     tone, opxy::q31::multiply(opxy::q31::half(detail::next_noise(voice)), noise_amount));
             output[i] = detail::bit_crush(
                 voice, detail::spread(voice, tone, spread_settings), crush_settings);
-            voice.carrier_phase += pitch[i];
-            voice.modulator_phase += detail::modulator_increment(pitch[i], detune);
+            const opxy::u32 current_pitch = pitch[i];
+            if (current_pitch != last_pitch) {
+                last_pitch = current_pitch;
+                detuned_pitch = detail::modulator_increment(current_pitch, detune);
+            }
+            voice.carrier_phase += current_pitch;
+            voice.modulator_phase += detuned_pitch;
         }
     }
     voice.lfo_phase += lfo_increment * opxy::block_frames;

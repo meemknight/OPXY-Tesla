@@ -111,6 +111,21 @@ int main() {
     const bool unison = tesla::detail::modulator_increment(42852281u, 0) == 42852281u;
     const bool octave_down = tesla::detail::modulator_increment(42852281u, 0x7fffffff)
         == 21426140u;
+    // A mix of steady notes, a one-sample change and a glide must advance
+    // both oscillators exactly as the original per-sample calculation did.
+    tesla::Voice pitch_voice;
+    tesla::initialize(pitch_voice, shared, 1);
+    tesla::start(pitch_voice, shared, 1);
+    opxy::u32 varying_pitch[opxy::block_frames];
+    opxy::u32 expected_carrier = 0, expected_modulator = 0;
+    for (unsigned i = 0; i < opxy::block_frames; ++i) {
+        varying_pitch[i] = i < 16 ? 42852281u : (i < 32 ? 50000000u : 50000000u + i * 1234u);
+        expected_carrier += varying_pitch[i];
+        expected_modulator += tesla::detail::modulator_increment(varying_pitch[i], saw_stack[3]);
+    }
+    tesla::render(pitch_voice, shared, 1, output, saw_stack, varying_pitch);
+    const bool pitch_is_sample_accurate = pitch_voice.carrier_phase == expected_carrier
+        && pitch_voice.modulator_phase == expected_modulator;
     const bool detune_tames_lfo = tesla::detail::detune_lfo_depth(opxy::q31::maximum, 0)
         > 0x70000000
         && tesla::detail::detune_lfo_depth(opxy::q31::maximum, opxy::q31::maximum)
@@ -129,11 +144,12 @@ int main() {
     if (!hard_sounds_bounded) std::puts("FAIL high-character settings exceed the declared peak");
     if (!tone_zones) std::puts("FAIL filter zones do not open, add then remove noise");
     if (!unison || !octave_down) std::puts("FAIL detune range");
+    if (!pitch_is_sample_accurate) std::puts("FAIL changing pitch phase accuracy");
     if (!detune_tames_lfo) std::puts("FAIL detune does not tame LFO depth");
     if (!saturating_mix) std::puts("FAIL saturating mix");
     return sounding && bounded && saw_changes_shape && square_changes_shape && filter_changes_sound
         && noise_changes_sound && crush_changes_sound && spread_changes_sound && lfo_changes_sound
         && stopped_lfo_is_neutral
         && hard_sounds_bounded && tone_zones
-        && unison && octave_down && detune_tames_lfo && saturating_mix ? 0 : 1;
+        && unison && octave_down && pitch_is_sample_accurate && detune_tames_lfo && saturating_mix ? 0 : 1;
 }
