@@ -3,7 +3,7 @@
 
 namespace tesla {
 // Every voice owns its two oscillator phases, a deterministic noise stream,
-// one filter delay and a fixed ensemble buffer. Eight voices use 16,672 bytes.
+// one filter delay and a fixed ensemble buffer. Eight voices use 16,704 bytes.
 struct Voice {
     opxy::u32 carrier_phase;
     opxy::u32 modulator_phase;
@@ -11,6 +11,7 @@ struct Voice {
     opxy::i32 filter;
     opxy::u32 crush_clock;
     opxy::i32 crushed;
+    opxy::i32 crush_smooth;
     opxy::u32 lfo_phase;
     opxy::u32 chorus_phase;
     opxy::u32 chorus_index;

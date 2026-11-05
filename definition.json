@@ -21,7 +21,7 @@
     "Square Arc":{"modulation":1,"ground_noise":1,"phase_filter":0.5,"detune":0.04,"crush":0,"spread":0.2,"lfo_rate":0.1,"lfo_amount":0}
   },
   "resources": {
-    "voiceBytes":2084,"voiceAlignment":4,"voiceCapacity":8,"sharedBytes":0,
+    "voiceBytes":2088,"voiceAlignment":4,"voiceCapacity":8,"sharedBytes":0,
     "outputPeakQ31":2147483647,
     "display":{"stateBytes":24,"stateAlignment":4,"paths":4,"points":64,"nodes":30,"texts":16,"palette":16}
   },

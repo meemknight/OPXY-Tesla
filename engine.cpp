@@ -121,24 +121,28 @@ struct CrushSettings {
 inline CrushSettings crush_settings(opxy::i32 amount) {
     CrushSettings settings = {0, 0, 0};
     if (!amount) return settings;
-    // Rate reduction supplies the rain-like, stepped movement at low settings;
-    // deeper settings also remove groups of three low-order bits at a time.
+    // Quantize amplitude without sample-rate reduction: an independent hold
+    // clock produces inharmonic aliases that can sound like detuning.
     settings.active = 1;
-    settings.hold = 1u + (static_cast<opxy::u32>(amount) >> 26);
-    const opxy::u32 discarded = (static_cast<opxy::u32>(amount) >> 28) * 3u;
+    // The engine has headroom, so a nominal 9-bit quantizer was effectively
+    // too subtle. Start at 5-bit resolution and sweep down to 2 bits.
+    const opxy::u32 discarded = 27u + (static_cast<opxy::u32>(amount) >> 29);
     settings.mask = 0xffffffffu << discarded;
     return settings;
 }
 
 inline opxy::i32 bit_crush(Voice& voice, opxy::i32 signal, const CrushSettings& settings) {
-    if (!settings.active) return signal;
-    if (!voice.crush_clock) {
-        voice.crushed = static_cast<opxy::i32>(static_cast<opxy::u32>(signal) & settings.mask);
-        voice.crush_clock = settings.hold - 1u;
-    } else {
-        --voice.crush_clock;
+    if (!settings.active) {
+        voice.crush_smooth = signal;
+        return signal;
     }
-    return voice.crushed;
+    voice.crushed = static_cast<opxy::i32>(static_cast<opxy::u32>(signal) & settings.mask);
+    if (voice.crushed < -opxy::q31::maximum) voice.crushed = -opxy::q31::maximum;
+    // Soften quantization edges while retaining their stepped tone.
+    // Halving before addition keeps the sum within the signed Q31 range.
+    voice.crush_smooth = saturating_add(opxy::q31::half(voice.crush_smooth),
+                                        opxy::q31::half(voice.crushed));
+    return voice.crush_smooth;
 }
 
 struct SpreadSettings {
@@ -185,6 +189,7 @@ inline void initialize(Voice& voice, Shared&, opxy::u32 owner) {
     voice.filter = 0;
     voice.crush_clock = 0;
     voice.crushed = 0;
+    voice.crush_smooth = 0;
     voice.lfo_phase = owner * 0x1745d174u;
     voice.chorus_phase = owner * 0x45d9f3bu;
     voice.chorus_index = 0;
@@ -197,6 +202,7 @@ inline void start(Voice& voice, Shared&, opxy::u32) {
     voice.filter = 0;
     voice.crush_clock = 0;
     voice.crushed = 0;
+    voice.crush_smooth = 0;
 }
 inline void destroy(Voice&, Shared&, opxy::u32) {}
 
@@ -244,6 +250,11 @@ inline void render(Voice& voice, Shared&, opxy::u32, opxy::Output output,
     // Keep the AM component audible without obscuring the saw/square source
     // shapes. The paired oscillators remain the dominant part of the sound.
     const opxy::i32 am_amount = opxy::q31::multiply(animated_ampere, 0x30000000);
+    // Up to 25% extra level near either control's sine end, fading out by
+    // 50%. Use the animated setting so LFO sweeps receive the same balance.
+    const opxy::i32 quieter_shape = animated_ampere < ground ? animated_ampere : ground;
+    const opxy::i32 level_boost = quieter_shape < 0x40000000
+        ? (0x40000000 - quieter_shape) / 2 : 0;
     const detail::CrushSettings crush_settings = detail::crush_settings(crush);
     const detail::SpreadSettings spread_settings = detail::spread_settings(spread);
 
@@ -255,9 +266,10 @@ inline void render(Voice& voice, Shared&, opxy::u32, opxy::Output output,
             const opxy::i32 secondary = detail::waveform(ground, voice.modulator_phase);
             const opxy::i32 pair = opxy::q31::half(primary) + opxy::q31::half(secondary);
             const opxy::i32 ring_modulated = opxy::q31::multiply(primary, secondary);
-            const opxy::i32 source = opxy::q31::half(
+            opxy::i32 source = opxy::q31::half(
                 detail::crossfade(pair, ring_modulated, am_amount));
-            voice.filter += opxy::q31::multiply(source - voice.filter, filter_coefficient);
+            if (level_boost) source += opxy::q31::multiply(source, level_boost);
+            voice.filter += opxy::q31::multiply(detail::saturating_add(source, -voice.filter), filter_coefficient);
             opxy::i32 tone = source;
             if (noise_amount)
                 tone = detail::saturating_add(
@@ -276,10 +288,10 @@ inline void render(Voice& voice, Shared&, opxy::u32, opxy::Output output,
             const opxy::i32 pair = opxy::q31::half(primary) + opxy::q31::half(secondary);
             const opxy::i32 ring_modulated = opxy::q31::multiply(primary, secondary);
             const opxy::i32 tesla_signal = detail::crossfade(pair, ring_modulated, am_amount);
-            // Reserve 6 dB for the optional noise layer. The one-pole state never
-            // exceeds that range, keeping its difference mathematically bounded.
-            const opxy::i32 source = opxy::q31::half(tesla_signal);
-            voice.filter += opxy::q31::multiply(source - voice.filter, filter_coefficient);
+            // Reserve headroom for the optional noise layer and level boost.
+            opxy::i32 source = opxy::q31::half(tesla_signal);
+            if (level_boost) source += opxy::q31::multiply(source, level_boost);
+            voice.filter += opxy::q31::multiply(detail::saturating_add(source, -voice.filter), filter_coefficient);
             opxy::i32 tone = detail::crossfade(voice.filter, source, filter_mix);
             if (noise_amount)
                 tone = detail::saturating_add(
