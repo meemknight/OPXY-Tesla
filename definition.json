@@ -18,7 +18,13 @@
     "Shortwave":{"modulation":0.92,"ground_noise":0.82,"phase_filter":0.85,"detune":0.7,"crush":0.28,"spread":0.24,"lfo_rate":0.2,"lfo_amount":0.36},
     "Rain":{"modulation":0.72,"ground_noise":0.64,"phase_filter":0.9,"detune":0.78,"crush":0.64,"spread":0.42,"lfo_rate":0.08,"lfo_amount":0.48},
     "Saw Stack":{"modulation":0.5,"ground_noise":0.5,"phase_filter":0.5,"detune":0.06,"crush":0,"spread":0.34,"lfo_rate":0.1,"lfo_amount":0},
-    "Square Arc":{"modulation":1,"ground_noise":1,"phase_filter":0.5,"detune":0.04,"crush":0,"spread":0.2,"lfo_rate":0.1,"lfo_amount":0}
+    "Square Arc":{"modulation":1,"ground_noise":1,"phase_filter":0.5,"detune":0.04,"crush":0,"spread":0.2,"lfo_rate":0.1,"lfo_amount":0},
+    "Drone 220":{"modulation":0.20999786,"ground_noise":0.14999847,"phase_filter":0.47001556,"detune":1,"crush":0,"spread":0.28000732,"lfo_rate":0.10998871,"lfo_amount":0.58000427},
+    "Echo 240":{"modulation":0.03997925,"ground_noise":0.05999939,"phase_filter":0.21997742,"detune":0,"crush":0,"spread":1,"lfo_rate":0.55000458,"lfo_amount":0.49000519},
+    "Electric Keys":{"modulation":0.07998901,"ground_noise":0.08999908,"phase_filter":0.37998596,"detune":0,"crush":0.53999451,"spread":0,"lfo_rate":0,"lfo_amount":0},
+    "Ohm":{"modulation":0.82000183,"ground_noise":0.62999359,"phase_filter":0.68034913,"detune":0.49732963,"crush":0.46308786,"spread":0.72457045,"lfo_rate":0.19516587,"lfo_amount":0.0860622},
+    "Race 120":{"modulation":0.08996857,"ground_noise":0.28000732,"phase_filter":0.21997742,"detune":0.00997955,"crush":0,"spread":1,"lfo_rate":0.96002075,"lfo_amount":0.49000519},
+    "Static":{"modulation":0.08996857,"ground_noise":0.07998901,"phase_filter":0.37998596,"detune":0.00997955,"crush":0,"spread":1,"lfo_rate":0,"lfo_amount":0}
   },
   "resources": {
     "voiceBytes":2088,"voiceAlignment":4,"voiceCapacity":8,"sharedBytes":0,

@@ -2,5 +2,6 @@
   "schema": 1,
   "sdk": "1.7",
   "kind": "synth",
+  "presets": "presets",
   "description": "Inspired and improved from the OP-1 Voltage engine. Built in crush and spread for easy sound design and a build in lfo for electric buzz"
 }
